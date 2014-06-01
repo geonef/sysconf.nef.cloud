@@ -29,7 +29,14 @@ like the INI files philosophy.
 The nef-cloud script would use a few of these definitions and call
 service scripts lying into /etc/nef.service with the right definitions
 depending on the node we're in, the cloud we're about and the service
-that's being called. Think of it like the /etc/init.d/ scripts.
+that's being called.
+
+**Think of it like the /etc/init.d/ scripts.**
+
+**nef-cloud is an attempt to build most simple, low-level tool that guide and ease UNIX service replication across multiple nodes.**
+
+Even single-node systems can benefit from the structuration it provides,
+as well as the garantee to be able to replicate them easily whenever scaling is needed.
 
 
 Example
