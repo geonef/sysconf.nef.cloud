@@ -9,9 +9,9 @@ that helps managing services (like HTTP, PHP, mailer or DB servers) which
 are distributed around UNIX nodes.
 
 
-What? Yet another complicated cloud manager?
+Yet another complicated cloud manager?
 ------------------------------------------------------------
-No!
+**No!**
 
 As [SYSCONF](https://github.com/geonef/sysconf.base) is a simple yet powerful
 way to organise and sync sysadmin work, it covers quite some needs already.
@@ -22,7 +22,7 @@ static shell files in _/etc/nef.cloud_.
 
 Example
 -------
-[Check out the complete example](./tree/usr/share/doc/examples/mycloud-3nodes-2service)
+[Check out the complete example](./tree/usr/share/doc/nef.cloud/examples/mycloud-3nodes-2service)
 with 2 services (HTTP CDN and Postfix mailer).
 
 To make it shorter, suppose you need to setup a system named "mycloud" with 2 services:
