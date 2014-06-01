@@ -15,9 +15,21 @@ Yet another complicated cloud manager?
 
 As [SYSCONF](https://github.com/geonef/sysconf.base) is a simple yet powerful
 way to organise and sync sysadmin work, it covers quite some needs already.
+It makes easy to reproduce services, but multiple-system management (LXC or VM)
+and networking is still hard to manage.
 
 **[nef-cloud](./tree/usr/bin/nef-cloud)** leverages SYSCONF by providing deployment logic through
 static shell files in _/etc/nef.cloud_.
+
+Compared to the Proxmox kind, nef-cloud does not integrate anything except
+by setting a few simple shell definitions in /etc/nef.cloud that may be
+cloud-related, node-related and service-related and organized pretty much
+like the INI files philosophy.
+
+The nef-cloud script would use a few of these definitions and call
+service scripts lying into /etc/nef.service with the right definitions
+depending on the node we're in, the cloud we're about and the service
+that's being called. Think of it like the /etc/init.d/ scripts.
 
 
 Example
@@ -29,10 +41,10 @@ To make it shorter, suppose you need to setup a system named "mycloud" with 2 se
 * an HTTP CDN service to serve static files ; file can be added internally to the CDN
 * a Postfix mail system with DKIM email signature done right, listening on SMTP port 25
 
-The service should be replicated on 3 physical Debian nodes that we call "n1",
-"n2", "n3" that communicate with each other through unsecure Internet.
+The service should be replicated on 3 physical Debian nodes that we name _n1_,
+_n2_, _n3_ that communicate with each other through unsecure Internet.
 
-### What we need to write on node n1
+### What we need to write on node _n1_
 
 #### /etc/nef.cloud/mycloud/config
 ```
@@ -85,7 +97,7 @@ NEF_CLOUD_NODE_PUBLIC_IP=1.2.3.6
 ```
 
 #### /etc/nef.local/services
-Needed to tell the host that it is indeed the host for multiple services' LXC containers:
+Needed to tell the host that it is indeed the node _n1_'s host that manage multiple services' LXC containers:
 ```
 mycloud n1 host
 ```
