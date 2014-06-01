@@ -9,20 +9,21 @@ that helps managing services (like HTTP, PHP, mailer or DB servers) which
 are distributed around UNIX nodes.
 
 
-You said cloud? Is it yet another complicated cloud manager?
+What? Yet another complicated cloud manager?
 ------------------------------------------------------------
 No!
 
 As [SYSCONF](https://github.com/geonef/sysconf.base) is a simple yet powerful
 way to organise and sync sysadmin work, it covers quite some needs already.
 
-**nef-cloud** leverages SYSCONF by providing deployment logic through
+**[nef-cloud](./tree/usr/bin/nef-cloud)** leverages SYSCONF by providing deployment logic through
 static shell files in _/etc/nef.cloud_.
 
 
 Example
 -------
-There is a complete an example with 2 services (HTTP CDN and Postfix mailer) in tree/usr/share/doc/examples/mycloud-3nodes-2service.
+[Check out the complete example](./tree/usr/share/doc/examples/mycloud-3nodes-2service)
+with 2 services (HTTP CDN and Postfix mailer).
 
 To make it shorter, suppose you need to setup a system named "mycloud" with 2 services:
 * an HTTP CDN service to serve static files ; file can be added internally to the CDN
@@ -112,7 +113,7 @@ such as MongoDB's, CouchBase's, Elastic Search and so many others, that
 should be configured by specific /etc/nef.service/name-of-service and
 associated [SYSCONF](https://github.com/geonef/sysconf.base) profile.
 
-First design and implementation by Jean-Francois Gigand, GEONF <jf@geonef.fr>,
+First design and implementation by Jean-Francois Gigand, GEONEF <jf@geonef.fr>,
 in early 2014 and released as free software on GitHub a few months later.
 
 If you're interested in using nef-cloud, feel free to contact me. Explain the
