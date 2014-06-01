@@ -1,0 +1,267 @@
+#!/bin/bash
+#
+# nef-cloud management utility
+#
+
+. /usr/share/bash-nef/util
+. /usr/share/nef-cloud/lib/core
+. /usr/share/nef-cloud/lib/util
+. /usr/share/nef-cloud/lib/apps
+
+NEF_CLOUD_CLOUDS_BASEDIR=/etc/nef.cloud
+NEF_CLOUD_SERVICES_BASEDIR=/etc/nef.service
+NEF_LOCAL_SERVICES_PATH=/etc/nef.local/services
+CLOUD_NEF_TEMPLATES_PATH=/usr/share/nef-cloud/templates
+
+NEF_CLOUD_BRIDGE_NETMASK=23
+
+# declare -a NEF_SERVICE_HOOKS_START
+# declare -a NEF_SERVICE_HOOKS_STOP
+# declare -a NEF_SERVICE_HOOKS_UPDATE_NEW
+# declare -a NEF_SERVICE_HOOKS_UPDATE
+# declare -a NEF_SERVICE_HOOKS_UPDATE_CLEAN
+
+NEF_SERVICE_UPDATE_NEW() { return; }
+NEF_SERVICE_UPDATE() { return; }
+NEF_SERVICE_UPDATE_CLEAN() { return; }
+NEF_SERVICE_START() { return; }
+NEF_SERVICE_STOP() { return; }
+NEF_SERVICE_UNINSTALL() { return; }
+NEF_SERVICE_UPDATE_APPS() { return; }
+
+show_usage() {
+    cat >&2 <<EOF
+usage: $0 [--local | --all | --cloud CLOUD_NAME] <command>
+
+Where <command> is one of:
+
+    list
+    show
+    update { services | apps }
+    uninstall
+    register-app-version NODE APP_NAME [GIT_TAG]
+    ___app-version { register CLOUD APP_NAME GIT_REF }
+    _
+
+Valid options are:
+    -v | --verbose      Be more verbose
+
+Examples:
+    nef-cloud register-app-version --cloud primary n4 complexitude t1
+
+EOF
+    exit -1
+}
+
+message()
+{
+    [ "$_arg_verbose" = "1" ] && echo "$@" >&2
+}
+
+nef_cloud_log()
+{
+    local _cloud=$NEF_CLOUD
+    local _node=$NEF_CLOUD_NODE
+    local _service=$NEF_SERVICE
+    [ "_cloud" = "" ] && _cloud='*'
+    [ "_node" = "" ] && _node='*'
+    [ "_service" = "" ] && _service='*'
+
+    log "[$_cloud:$_node:$_service] $*"
+}
+
+
+###################################################
+# COMMANDS
+
+_cmd_list_clouds_one()
+{
+    echo $1
+}
+
+_do_show_cloud_service()
+{
+    local ip=$(nef_info_service_ip)
+
+    echo "=== SERVICE \"$1\" ==="
+    echo "IP: $ip"
+    echo
+    # echo "==== SERVICE \"$1\" ===="
+    # set -o posix
+    # set | grep NEF_SERVICE_
+    # echo
+}
+
+_do_show_cloud_node()
+{
+    local bridgetNet=$(nef_info_node_bridge_network --with-prefix)
+    echo
+    echo "=== NODE \"$1\" ==="
+    echo "Bridge network: $bridgetNet"
+    echo "Variables:"
+    set -o posix
+    set | grep -E "NEF_CLOUD_NODE_|NEF_SERVICE_" | nef_increment_text
+    echo
+    nef_foreach_service _do_show_cloud_service | nef_increment_text
+}
+
+_do_show_cloud()
+{
+    echo
+    echo "== CLOUD \"$1\" =="
+    echo "Variables:"
+    set -o posix
+    set | grep NEF_CLOUD_ | grep -v NEF_CLOUD_NODE_ | nef_increment_text
+    echo
+    nef_foreach_node _do_show_cloud_node | nef_increment_text
+}
+
+_do_update_services()
+{
+    nef_foreach_cloud_node_service NEF_SERVICE_UPDATE_NEW
+    nef_foreach_cloud_node_service NEF_SERVICE_UPDATE
+    nef_foreach_cloud_node_service NEF_SERVICE_UPDATE_CLEAN
+}
+_do_update_apps()
+{
+    nef_foreach_cloud_node_service NEF_SERVICE_UPDATE_APPS
+}
+_do_event()
+{
+    echo "** SENDING EVENT: $1"
+    nef_foreach_cloud_node_service nef_hook_run "$1"
+}
+
+_run_cmd()
+{
+    case "$1" in
+        list)
+            _arg_clouds=(`nef_cloud_list_clouds`)
+            nef_foreach_cloud _cmd_list_clouds_one
+            ;;
+        show)
+            nef_foreach_cloud _do_show_cloud
+            ;;
+        update)
+            case "$2" in
+                services)
+                    _do_update_services
+                    ;;
+                apps)
+                    _do_update_apps
+                    ;;
+                *)
+                    show_usage
+                    ;;
+            esac
+            ;;
+        uninstall)
+            echo -n "Clouds will be removed. "
+            read -p "Are you sure? [y/n]" -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]
+            then
+                nef_foreach_cloud_node_service NEF_SERVICE_UNINSTALL
+            else
+                nef_fatal "user cancel"
+            fi
+            ;;
+        register-app-version)
+            _node="$2"
+            NEF_APP="$3"
+            NEF_APP_VERSION_TAG="$4"
+
+            [ "$NEF_APP" = "" ] && show_usage
+            [ "$NEF_APP_VERSION_TAG" = "" ] && NEF_APP_VERSION_TAG="master"
+
+            test ${#_arg_clouds[@]} != 1 && nef_fatal "a single cloud must be selected for register-app"
+            nef_cloud_source_cloud ${_arg_clouds[0]}
+            nef_cloud_source_cloud_node $_node
+            nef_cloud_load_app $NEF_APP
+            . /usr/share/nef-cloud/lib/app_version_register
+            nef_app_version_register
+            ;;
+        event)
+            [ "$2" = "" ] && show_usage
+            nef_foreach_cloud_node_service _do_event $2
+            ;;
+        _)
+            nef_foreach_cloud nef_generate_cloud_hosts
+            ;;
+        *)
+            echo "bad command: $1"
+            show_usage
+            ;;
+    esac
+}
+
+###################################################
+
+
+_args=()
+_arg_clouds=()
+_arg_verbose=0
+_arg_local=1
+OLD_IFS="$IFS"
+IFS="
+"
+_local_services=( `cat $NEF_LOCAL_SERVICES_PATH` )
+IFS="$OLD_IFS"
+
+# _load_local
+
+while [ "$1" != "" ]; do
+
+    case "$1" in
+
+        --all)
+            # unset NEF_LOCAL_SERVICES
+            _arg_local=0
+            _arg_clouds=(`nef_cloud_list_clouds`)
+            shift
+            ;;
+        --local)
+            # unset NEF_LOCAL_SERVICES
+            _arg_local=1
+            # _load_local
+            shift
+            ;;
+        --service)
+            _arg_local=1
+            shift
+            spec="$1"
+            [ "$spec" = "" ] && show_usage "--service: spec expected (ie. cloud:node:service)"
+            shift
+            spec=$(echo "$spec" | sed 's/:/ /g')
+            echo spec: $spec
+            _local_services=("$spec")
+            ;;
+        --cloud)
+            # _arg_local=0
+            _arg_clouds=(${_arg_clouds[@]} "$2")
+            shift 2
+            ;;
+        -v)
+            _arg_verbose=1
+            shift
+            ;;
+        --verbose)
+            _arg_verbose=1
+            shift
+            ;;
+        --help)
+	    show_usage
+	    ;;
+        -*)
+            echo "bad option: '$1'"
+	    show_usage
+	    ;;
+        *)
+            _args=(${_args[@]} "$1")
+            shift
+            ;;
+    esac
+
+done
+
+_run_cmd ${_args[@]}

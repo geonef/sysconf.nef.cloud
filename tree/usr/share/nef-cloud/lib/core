@@ -1,0 +1,170 @@
+#                -*- shell-script -*-
+
+nef_cloud_source_cloud()
+{
+    NEF_CLOUD=$1
+    NEF_CLOUD_DIRECTORY=$NEF_CLOUD_CLOUDS_BASEDIR/$1
+    NEF_CLOUD_CONFIG_PATH=$NEF_CLOUD_DIRECTORY/config
+    [ -r $NEF_CLOUD_CONFIG_PATH ] || \
+        nef_fatal "cannot read: $NEF_CLOUD_CONFIG_PATH"
+
+    message "Sourcing $NEF_CLOUD_CONFIG_PATH"
+    . $NEF_CLOUD_CONFIG_PATH
+}
+nef_cloud_source_cloud_node()
+{
+    NEF_CLOUD_NODE=$1
+    NEF_CLOUD_NODE_CONFIG_PATH=$NEF_CLOUD_DIRECTORY/nodes/$1
+    [ -r $NEF_CLOUD_NODE_CONFIG_PATH ] || \
+        nef_fatal "cannot read: $NEF_CLOUD_NODE_CONFIG_PATH"
+
+    message "Sourcing $NEF_CLOUD_NODE_CONFIG_PATH"
+    . $NEF_CLOUD_NODE_CONFIG_PATH
+}
+nef_cloud_source_service()
+{
+    NEF_SERVICE=$1
+    NEF_SERVICE_PATH=$NEF_CLOUD_SERVICES_BASEDIR/$1
+    [ -r $NEF_SERVICE_PATH ] || \
+        nef_fatal "cannot read: $NEF_SERVICE_PATH"
+
+    message "Sourcing $NEF_SERVICE_PATH"
+    NEF_SERVICE_IS_LXC=1
+    . $NEF_SERVICE_PATH
+
+}
+
+nef_cloud_list_clouds()
+{
+    names=$(find -L $NEF_CLOUD_CLOUDS_BASEDIR -mindepth 1 -maxdepth 1 -type d | sort | xargs -n 1 basename)
+    for name in $names; do
+        [ -r $NEF_CLOUD_CLOUDS_BASEDIR/$name/config ] && echo $name
+    done
+}
+
+nef_list_local()
+{
+    for service in "${_local_services[@]}"; do
+        echo "$service"
+    done
+}
+
+nef_foreach_cloud()
+{
+    local cloud
+
+    # NEF_LOCAL_SERVICES_PATH
+    declare -a _clouds=(${_arg_clouds[@]})
+    if test "$_arg_local" = "1"; then
+        declare -a _clouds=(
+            $(nef_list_local | sed 's/ .*//' | uniq)
+        )
+    fi
+
+    for cloud in ${_clouds[@]}; do
+        (
+            nef_cloud_source_cloud $cloud
+            "$@" $cloud
+        ) || nef_fatal "foreach_cloud sub-shell returned non-zero status"
+    done
+}
+
+
+nef_foreach_node()
+{
+    local node
+    local _argAll=0
+
+    if test "$1" = "--all"; then
+        _argAll=1
+        shift
+    fi
+
+    if test "$_argAll" = "0" -a "$_arg_local" = "1"; then
+        declare -a _nodes=(
+            $(nef_list_local \
+                | grep "^$NEF_CLOUD " \
+                | sed "s/^$NEF_CLOUD //" \
+                | sed "s/ .*//"
+            )
+        )
+    else
+        declare -a _nodes=(${NEF_CLOUD_NODES[@]})
+    fi
+
+    for node in ${_nodes[@]}; do
+        (
+            nef_cloud_source_cloud_node $node
+            "$@" $node
+        ) || nef_fatal "foreach_node sub-shell returned non-zero status"
+    done
+}
+
+nef_foreach_service()
+{
+    local service
+    local _argAll=0
+
+    if test "$1" = "--all"; then
+        _argAll=1
+        shift
+    fi
+
+    if test "$_argAll" = "0" -a "$_arg_local" = "1"; then
+        declare -a _services=(
+            $(nef_list_local \
+                | grep "^$NEF_CLOUD $NEF_CLOUD_NODE " \
+                | sed "s/^$NEF_CLOUD $NEF_CLOUD_NODE //"
+            )
+        )
+    else
+        declare -a _services=( ${NEF_CLOUD_NODE_SERVICES[@]} )
+    fi
+
+    for service in ${_services[@]}; do
+        (
+            nef_cloud_source_service $service
+            "$@" $service
+        ) || nef_fatal "foreach_service sub-shell returned non-zero status"
+    done
+}
+
+# _nef_foreach_cloud_node_service_each_service()
+# {
+#     echo service $1 $NEF_SERVICE
+# }
+_nef_foreach_cloud_node_service_each_node()
+{
+    nef_foreach_service "$@"
+}
+_nef_foreach_cloud_node_service_each_cloud()
+{
+    nef_foreach_node _nef_foreach_cloud_node_service_each_node "$@"
+}
+nef_foreach_cloud_node_service()
+{
+    nef_foreach_cloud _nef_foreach_cloud_node_service_each_cloud "$@"
+}
+
+# nef_cloud_ensure_arg_clouds() {
+# }
+
+# _load_local()
+# {
+#     if test -r $NEF_LOCAL_SERVICES_PATH; then
+#         message "Loading local services from: $NEF_LOCAL_SERVICES_PATH"
+#         local _content="`cat $NEF_LOCAL_SERVICES_PATH`"
+#         _oldIFS="$IFS"
+#         IFS="
+# "
+#         declare -a NEF_LOCAL_SERVICES=($_content)
+#         IFS="$_oldIFS"
+#         # nef_array_from_lines NEF_LOCAL_SERVICES \
+#         #     "`cat $NEF_LOCAL_SERVICES_PATH`"
+#         echo z2 "$_content" x2
+#         echo z1 "$NEF_LOCAL_SERVICES" x1
+
+#     else
+#         echo "Warning: cannot read $NEF_LOCAL_SERVICES_PATH"
+#     fi
+# }

@@ -1,0 +1,109 @@
+#                -*- shell-script -*-
+
+nef_mongodb_options() {
+    echo -n $CLOUD_NEF_MONGODB_COMMON_OPTIONS
+    echo --host $(nef_mongodb_host)
+}
+nef_mongodb_dbname() {
+    echo $NEF_CLOUD_MONGODB_DB
+}
+nef_mongodb_host() {
+    if test "$NEF_CLOUD_MONGODB_HOST" = ""; then
+        nef_info_service_ip mongodb
+    else
+        echo $NEF_CLOUD_MONGODB_HOST
+    fi
+}
+nef_cloud_load_app() {
+    NEF_APP="$1"
+    # NEF_CLOUD_APP_GIT_PATH="nef:app/${NEF_APP}.git"
+    NEF_CLOUD_APP_GIT_PATH="nef:app/zap.git"
+    appName=$NEF_APP # for compat in templates
+}
+
+nef_parse_mongoid() {
+    echo "$1" | sed 's/ObjectID(\(.*\))/\1/'
+}
+nef_parse_quoted() {
+    echo "$1" | sed 's/"\(.*\)"/\1/'
+}
+nef_parse_int() {
+    echo "$1" | sed 's/\..*//'
+}
+
+nef_foreach_app_version()
+{
+    mongoexport $(nef_mongodb_options) --db $(nef_mongodb_dbname) \
+        --collection AppVersion \
+        --query "`nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/mongodb.query.AppVersion.all.json`" \
+        --csv --fields _id,name,gitCommit,gitTag,codeNumber,domains 2>/dev/null | tail -n +2 | (
+
+        OLD_IFS="$IFS"
+        IFS=','
+        while read _id _name _commit _tag _versionCodeNumber _domains; do
+            OLD_IFS="$IFS"
+            NEF_APP_VERSION_ID=$(nef_parse_mongoid "$_id")
+            NEF_APP_VERSION_NAME=$(nef_parse_quoted "$_name")
+            commit=$(nef_parse_quoted "$_commit")
+            NEF_APP_VERSION_TAG=$(nef_parse_quoted "$_tag")
+            tag=$NEF_APP_VERSION_TAG # obsolete
+            NEF_APP_VERSION_NUMBER=$(nef_parse_int "$_versionCodeNumber")
+
+            NEF_APP_VERSION_INSTALL_DIR=$NEF_APP_VERSION_ID-$NEF_APP-$NEF_APP_VERSION_NAME
+            NEF_APP_VERSION_DOMAINS=$(nef_parse_quoted "$_domains")
+            [ "$NEF_APP_VERSION_ID" = "$NEF_APP_DEFAULT_VERSION_ID" ] && \
+                NEF_APP_VERSION_DOMAINS="$NEF_APP_DOMAIN $NEF_APP_VERSION_DOMAINS"
+            [ "$NEF_APP_VERSION_DOMAINS" = "" ] && \
+                NEF_APP_VERSION_DOMAINS=$appDomain
+            # declare -i versionCodeNumber=$_versionCodeNumber
+            # declare -i versionCodeNumber=$(nef_parse_quoted "$_versionCodeNumber")
+
+            declare -i NEF_APP_FPM_PORT=$((
+                    NEF_CLOUD_APP_PORT_CLOUDPART * 10000
+                    + NEF_APP_NUMBER * 100
+                    + NEF_APP_VERSION_NUMBER
+                    ))
+            "$@" $versionId $commit $tag
+            IFS=','
+        done
+    )
+}
+
+nef_foreach_app()
+{
+    echo mongoexport $(nef_mongodb_options) --db $(nef_mongodb_dbname) \
+        --collection App \
+        --query "`nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/mongodb.query.App.all.json`" \
+        --csv --fields "_id,name,codeNumber,domain,defaultVersion.\$id" >&2
+    mongoexport $(nef_mongodb_options) --db $(nef_mongodb_dbname) \
+        --collection App \
+        --query "`nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/mongodb.query.App.all.json`" \
+        --csv --fields "_id,name,codeNumber,domain,defaultVersion" 2>/dev/null | tail -n +2 | (
+
+        OLD_IFS="$IFS"
+        IFS=','
+        while read _appId _appName _appCodeNumber _appDomain _defaultVersion; do
+            # nef_cloud_log "_defaultVersionId: $_defaultVersion"
+            IFS="$OLD_IFS"
+            local appId=$(nef_parse_mongoid "$_appId")
+            local appName=$(nef_parse_quoted "$_appName")
+            NEF_APP_NUMBER=$(nef_parse_int "$_appCodeNumber")
+            appCodeNumber=NEF_APP_NUMBER # for compat
+            NEF_APP_DOMAIN=$(nef_parse_quoted "$_appDomain")
+            appDomain="$NEF_APP_DOMAIN" # compat
+            NEF_APP_DEFAULT_VERSION_ID=$(echo "$_defaultVersion" | sed 's/.*"$oid""* *: *""*\([^"]*\)".*/\1/')
+            # nef_cloud_log "NEF_APP_DEFAULT_VERSION_ID: $NEF_APP_DEFAULT_VERSION_ID";
+            (
+                nef_cloud_load_app $appName
+                nef_cloud_log "in app '$appId' [$NEF_APP]"
+                "$@" $appId $appName
+            )
+            IFS=','
+        done
+    )
+}
+
+nef_foreach_version()
+{
+    nef_foreach_app nef_foreach_app_version "$@"
+}

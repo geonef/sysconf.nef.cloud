@@ -1,0 +1,34 @@
+# NEF SERVICE 'http-front'               -*- shell-script -*-
+
+NEF_SERVICE_NUMBER=9
+NEF_SERVICE_SYSCONF=nef.service.http-front
+
+NEF_SERVICE_UPDATE()
+{
+    echo "http front UPDATE ==================="
+    nef_service_common_update
+}
+
+NEF_SERVICE_UPDATE_APPS()
+{
+    nef_service_http_update_nginx
+}
+
+nef_service_http_update_nginx()
+{
+    nginxConf=/etc/nginx/sites-enabled/generated.`nef_info_service_hostname`.conf
+    nef_cloud_log "Regenerating nginx config: $nginxConf"
+    nef_foreach_version nef_service_http_update_nginx_generate_one >$nginxConf
+    if service nginx status >/dev/null; then
+        service nginx reload && nef_cloud_log "Reloaded nginx"
+    else
+        service nginx start && nef_cloud_log "Started nginx"
+    fi
+}
+
+nef_service_http_update_nginx_generate_one()
+{
+    NEF_APP_VERSION_FPM_SERVICE=$(nef_info_service_ip $NEF_CLOUD_APP_DEFAULT_SERVICE):$NEF_APP_FPM_PORT
+    nef_cloud_log "generating config for app='$NEF_APP' tag= '$tag' commit='$commit' service='$NEF_APP_VERSION_FPM_SERVICE'"
+    nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/service.http-front.nginx.conf
+}

@@ -1,0 +1,16 @@
+# NEF SERVICE 'mongodb'               -*- shell-script -*-
+
+NEF_SERVICE_NUMBER=8
+NEF_SERVICE_FS_SIZE=50G
+NEF_SERVICE_SYSCONF=nef.service.mongodb
+
+NEF_SERVICE_UPDATE()
+{
+    echo "mongodb UPDATE ==================="
+    nef_service_common_update
+}
+
+NEF_SERVICE_UPDATE_APPS()
+{
+    echo "mongodb APP UPDATE ==================="
+}

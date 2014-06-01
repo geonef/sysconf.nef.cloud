@@ -1,0 +1,60 @@
+#                -*- shell-script -*-
+#
+# To create an app:
+#   db.App.insert({ "baseUrl": "",  "docTitle": "Complexitude",  "engine": "Tria",  "hidden": false,  "isPublic": true, "name": "complexitude",  "title": "Complexitude" })
+#
+
+nef_app_version_register()
+{
+    # Find commit ID and app ID
+    line=$(git ls-remote --tags --exit-code $NEF_CLOUD_APP_GIT_PATH $NEF_APP_VERSION_TAG)
+    [ "$?" -eq 0 ] || {
+        line=$(git ls-remote --exit-code --heads $NEF_CLOUD_APP_GIT_PATH $NEF_APP_VERSION_TAG | grep "$NEF_APP_VERSION_TAG")
+        [ "$?" -eq 0 ] || nef_fatal "tag '$NEF_APP_VERSION_TAG' not found by command : git ls-remote --exit-code $NEF_CLOUD_APP_GIT_PATH $NEF_APP_VERSION_TAG"
+        IS_DEV=1
+    }
+    commitID=`echo $line | sed 's/ .*//'`
+    # NEF_APP_VERSION_TAG=`echo $line | sed 's/.*\/tags\///'`
+
+    appId=$(mongoexport $(nef_mongodb_options) --db $(nef_mongodb_dbname) --collection App --query "`nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/mongodb.query.App.json`" --csv --fields _id 2>/dev/null | tail -n +2 | sed 's/ObjectID(\(.*\))/\1/')
+    appDomain=$(mongoexport $(nef_mongodb_options) --db $(nef_mongodb_dbname) --collection App --query "`nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/mongodb.query.App.json`" --csv --fields domain 2>/dev/null | tail -n +2)
+    appDomain=$(nef_parse_quoted $appDomain)
+    test "$appId" = "" && nef_fatal "app not found: $NEF_APP"
+    NEF_APP_VERSION_NAME=$(echo $NEF_APP_VERSION_TAG | sed -E 's/^[^-]+-//')
+
+    nef_cloud_log "APP='$NEF_APP' APP ID='$appId' APP domain='$appDomain'"
+    nef_cloud_log "VERSION='$NEF_APP_VERSION_NAME' TAG='$NEF_APP_VERSION_TAG' COMMIT='$commitID'"
+
+    # Check if version already exists
+    versionLine=$(mongoexport $(nef_mongodb_options) --db $(nef_mongodb_dbname) --collection AppVersion --query "$(nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/mongodb.query.AppVersion.json)" --csv --fields _id,gitPath,gitTag,gitCommit 2>/dev/null | tail -n +2 | head -n 1)
+
+    [ "$versionLine" = "" ] || nef_fatal "version already exists for app ID '$appId' and commit '$commitID'"
+
+
+    # Determine a unique codeNumber
+    check_codeNumber()
+    {
+        local _line=$(mongoexport $(nef_mongodb_options) --db $(nef_mongodb_dbname) --collection AppVersion --query "$(nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/mongodb.query.AppVersion.codeNumber.json)" --csv --fields _id 2>/dev/null | tail -n +2 | head -n 1)
+
+        [ "$_line" != "" ]
+        return
+    }
+    declare -i codeNumber=1
+    while check_codeNumber; do
+        codeNumber=$((codeNumber+1))
+    done
+    nef_cloud_log "codeNumber = $codeNumber"
+    domainName=$(echo ${NEF_APP_VERSION_NAME} | sed 's/[^a-z0-9-]//g')
+    echo "$domainName" | grep -q "^[0-9]" && \
+        domainName="v$domainName"
+    NEF_APP_VERSION_DOMAINS=${domainName}.${appDomain}
+
+    # Insert AppVersion document
+    mongoDocVersion=$(nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/mongodb.document.AppVersion.json)
+
+    echo "Inserting AppVersion into MongoDB database '$(nef_mongodb_dbname)':"
+    echo "$mongoDocVersion"
+    echo "db.AppVersion.insert($mongoDocVersion)" | mongo $(nef_mongodb_options) --quiet $(nef_mongodb_dbname) || nef_fatal "mongo insert query failed"
+
+    nef_cloud_log "SUCCESSFULLY REGISTERED AppVersion for commit $commitID (tag '$NEF_APP_VERSION_TAG')"
+}

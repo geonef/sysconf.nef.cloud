@@ -1,0 +1,157 @@
+#                -*- shell-script -*-
+
+nef_info_node_cloud_network()
+{
+    _withPrefix=0
+
+    if test "$1" = "--with-prefix"; then
+        _withPrefix=1
+        shift
+    fi
+
+    cloud=$1
+    (
+        [ "$cloud" = "" ] || nef_cloud_source_cloud $cloud
+
+        # format: 00001010.TTCCCC10.PPPPPPPL.LLLLLLLL /16
+        declare -i dIP=$((
+                10 << 24
+                | 1 << 22
+                | $NEF_CLOUD_NUMBER << 18
+                | 2 << 16
+                ))
+
+        echo -n $(nef_format_ip --dotted $dIP)
+
+        if test $_withPrefix = 1; then
+            echo -n "/16"
+        fi
+        echo
+    )
+}
+nef_info_node_hostname()
+{
+    echo ${NEF_CLOUD_NODE}.${NEF_CLOUD}.nef
+}
+nef_info_service_hostname()
+{
+    service=$1
+    node=$2
+    cloud=$3
+    (
+        [ "$cloud" = "" ] || nef_cloud_source_cloud $cloud
+        [ "$node" = "" ] || nef_cloud_source_node $node
+        [ "$service" = "" ] || nef_cloud_source_service $service
+
+        echo ${NEF_SERVICE}.$(nef_info_node_hostname)
+    )
+}
+
+nef_info_node_bridge_network()
+{
+    _withPrefix=0
+
+    if test "$1" = "--with-prefix"; then
+        _withPrefix=1
+        shift
+    fi
+    service=$1
+    node=$2
+    cloud=$3
+    (
+        [ "$cloud" = "" ] || nef_cloud_source_cloud $cloud
+        [ "$node" = "" ] || nef_cloud_source_node $node
+        [ "$service" = "" ] || nef_cloud_source_service $service
+
+        # format: 00001010.TTCCCC10.PPPPPPPL.LLLLLLLL /23
+        declare -i dIP=$((
+                10 << 24
+                | 1 << 22
+                | $NEF_CLOUD_NUMBER << 18
+                | 2 << 16
+                | $NEF_CLOUD_NODE_NUMBER << 9
+                ))
+
+        echo -n $(nef_format_ip --dotted $dIP)
+
+        if test $_withPrefix = 1; then
+            echo -n "/23"
+        fi
+        echo
+    )
+}
+nef_info_service_ip()
+{
+    declare -i dNetIP=$(nef_format_ip --decimal $netIP `nef_info_node_bridge_network`)
+
+    service=$1
+    node=$2
+    cloud=$3
+    (
+        [ "$cloud" = "" ] || nef_cloud_source_cloud $cloud
+        [ "$node" = "" ] || nef_cloud_source_node $node
+        [ "$service" = "" ] || nef_cloud_source_service $service
+
+        nef_format_ip --dotted $(( $dNetIP | $NEF_SERVICE_NUMBER ))
+
+        # local b1=10
+        # local b2=$(echo "1*2^6 + $NEF_CLOUD_NUMBER*2^2 + 2" | bc)
+        # local b3=$(echo "$NEF_CLOUD_NODE_NUMBER*2 + $NEF_SERVICE_NUMBER/2^8" | bc)
+        # local b4=$(echo "$NEF_SERVICE_NUMBER % 2^8" | bc)
+        # echo $b1.$b2.$b3.$b4
+    )
+}
+
+nef_generate_service_hosts()
+{
+    if test "$NEF_SERVICE_IS_LXC" -eq 1; then
+        echo $(nef_info_service_ip) $(nef_info_service_hostname)
+    fi
+}
+
+nef_generate_node_hosts()
+{
+    echo "# NODE '$NEF_CLOUD_NODE'"
+    echo $(nef_info_service_ip host) $(nef_info_node_hostname)
+    nef_foreach_service --all nef_generate_service_hosts
+    echo
+}
+
+nef_generate_cloud_hosts()
+{
+    echo "# /etc/hosts-like content for cloud '$NEF_CLOUD'"
+    echo
+    nef_foreach_node --all nef_generate_node_hosts
+}
+
+# to be called from NEF_SERVICE_UPDATE functions
+nef_service_common_update()
+{
+    generatedHostsFile=/etc/hosts.d/generated.`nef_info_service_hostname`.hosts
+    nef_generate_cloud_hosts >$generatedHostsFile
+    nef_cloud_log "Generated `cat $generatedHostsFile | wc -l` lines into $generatedHostsFile"
+    nef-update-hosts
+
+    cat <<EOF >/etc/gitconfig.d/local.conf
+[url "git.geonef.fr:/var/lib/git/"]
+  insteadOf = nef:
+EOF
+    nef-update-gitconfig
+
+    mkdir -p /var/log/geonef
+    chgrp geonef /var/log/geonef
+    chmod g+w /var/log/geonef
+}
+
+nef_sudo()
+{
+    sudo -u geonef "$@"
+}
+
+nef_mkdir_p_geonef()
+{
+    [ -d $1 ] || {
+        mkdir -p $1
+        chown geonef $1
+    }
+}

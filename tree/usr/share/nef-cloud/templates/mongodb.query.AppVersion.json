@@ -1,0 +1,4 @@
+{
+    "app.\$id": ObjectId("$appId"),
+    "gitCommit": "$commitID"
+}

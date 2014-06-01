@@ -1,0 +1,96 @@
+# NEF SERVICE 'app-201403'               -*- shell-script -*-
+
+NEF_SERVICE_NUMBER=10
+NEF_SERVICE_FS_SIZE=20G
+NEF_SERVICE_SYSCONF=nef.service.app
+CLOUD_NEF_APP_CONSOLE=common/gate/cli.php
+
+NEF_SERVICE_UPDATE()
+{
+    nef_service_common_update
+    nef_service_app_system_update
+}
+
+NEF_SERVICE_UPDATE_APPS()
+{
+    _nef_service_app_install
+    _nef_service_app_update_fpm
+}
+
+nef_service_app_system_update()
+{
+    # `nef_info_service_hostname`
+    echo
+}
+
+_nef_service_app_install()
+{
+    nef_foreach_version _nef_service_app_fix_version
+}
+
+_nef_service_app_fix_version()
+{
+    nef_cloud_log "  checking: $NEF_APP_VERSION_INSTALL_DIR"
+
+    if find $NEF_CLOUD_APP_INSTALL_ROOT -mindepth 1 -maxdepth 1 -name "$NEF_APP_VERSION_INSTALL_DIR-*" \
+        | head -n 1 | grep -q .; then
+
+        nef_cloud_log "  version $NEF_APP_VERSION_ID [$NEF_APP_VERSION_NAME] (tag: $tag): installed already"
+    else
+        nef_cloud_log "  version $NEF_APP_VERSION_ID [$NEF_APP_VERSION_NAME] (tag: $tag): missing"
+        dirName=$NEF_APP_VERSION_INSTALL_DIR-`date +%Y%m%d%H%M%S`
+        absDirName=$NEF_CLOUD_APP_INSTALL_ROOT/$dirName
+        nef_cloud_log "      installing into: $absDirName"
+        git clone --recursive -b $tag "$NEF_CLOUD_APP_GIT_PATH" $absDirName || nef_fatal "git-clone failed"
+        cd $absDirName
+        echo "$appName" >app/APP
+        echo "$NEF_CLOUD_APP_ENV" >app/ENV
+        echo "$NEF_APP_VERSION_ID" >app/VERSION
+        nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/service.app.symfony.config.yml >app/config/generated.config.yml
+        nef_cloud_log "      setting up..."
+        chown -R geonef:geonef .
+        nef_sudo app/install.sh || nef_fatal "Error in app/install.sh"
+        nef_cloud_log "    app built successfully."
+
+        tmpStatic=$(nef_create_temp_dir)
+        mkdir $tmpStatic/$NEF_APP_VERSION_ID
+        echo cp -RL app/cache/$NEF_CLOUD_APP_ENV/public/{image,images,pkg} $tmpStatic/$NEF_APP_VERSION_ID
+        cp -RL app/cache/$NEF_CLOUD_APP_ENV/public/{image,images,pkg} $tmpStatic/$NEF_APP_VERSION_ID \
+            || nef_fatal "Error while copying static files to tmp dir"
+
+        echo "tar c $NEF_APP_VERSION_ID | nc $(nef_info_service_ip cdn) 11001 >tar-files.log"
+
+        cd $tmpStatic && \
+            tar c $NEF_APP_VERSION_ID | nc $(nef_info_service_ip cdn) 11001 >tar-files.log && \
+            nef_cloud_log "    pushed `cat tar-files.log | wc -l` files to CDN `nef_info_service_ip cdn`:11001" && \
+            rm -rf $tmpStatic && \
+            nef_cloud_log "    done installing." \
+            || nef_fatal "Error while pushing static files to CDN"
+    fi
+}
+
+_nef_service_app_update_fpm()
+{
+    poolConf=/etc/php5/fpm/pool.d/generated.`nef_info_service_hostname`.conf
+    nef_cloud_log "Updating PHP-FPM: $poolConf"
+    nef_cloud_log "install root: $NEF_CLOUD_APP_INSTALL_ROOT"
+    mkdir -p $NEF_CLOUD_APP_INSTALL_ROOT
+    nef_foreach_version _nef_service_app_generate_fpm_one_version > $poolConf
+    if service php5-fpm status >/dev/null; then
+        service php5-fpm reload && nef_cloud_log "Reloaded php5-fpm"
+    else
+        service php5-fpm start && nef_cloud_log "Started php5-fpm"
+    fi
+}
+
+_nef_service_app_generate_fpm_one_version()
+{
+    NEF_APP_VERSION_INSTALL_DIR=$(find $NEF_CLOUD_APP_INSTALL_ROOT -mindepth 1 -maxdepth 1 -name "$NEF_APP_VERSION_INSTALL_DIR-*" | head -n 1)
+    if echo $NEF_APP_VERSION_INSTALL_DIR | grep -q .; then
+        nef_cloud_log "    install: $versionInstancePath"
+        nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/service.app.php.fpm.pool.conf
+        echo
+    else
+        nef_cloud_log "    version '$NEF_APP_VERSION_ID' (commit '$commit'): missing (ignored)"
+    fi
+}

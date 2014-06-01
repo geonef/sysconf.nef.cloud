@@ -1,0 +1,7 @@
+# NEF CLOUD 'mycloud-3nodes-2service' NODE 'n1'           -*- shell-script -*-
+
+# Used for static IP affectations
+NEF_CLOUD_NODE_NUMBER=1
+
+# Public IP of node for NEF_CLOUD_NODE_PUBLIC_INTERFACE
+NEF_CLOUD_NODE_PUBLIC_IP=199.1.2.3

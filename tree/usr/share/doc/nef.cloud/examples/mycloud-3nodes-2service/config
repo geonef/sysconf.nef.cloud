@@ -1,0 +1,87 @@
+# NEF CLOUD 'mycloud-3nodes-2service'               -*- shell-script -*-
+#
+# This is an example for a nef-cloud:
+#   - named "mycloud-3nodes-2service"
+#   - with 3 nodes:
+#     - node "n1" using conf: /etc/nef.cloud/mycloud-3nodes-2service/nodes/n1
+#     - node "n2" using conf: /etc/nef.cloud/mycloud-3nodes-2service/nodes/n2
+#     - node "n3" using conf: /etc/nef.cloud/mycloud-3nodes-2service/nodes/n3
+#   - using sub-nets of the private network 10.69.x.x/14 in and across nodes
+#     (as NEF_CLOUD_NUMBER=1)
+#
+# Besides this conf, the DNS zone for mydomain.net shall have
+# these kind of entries in order to be reachable through HTTP and SMTP
+# (but this in NOT required to get the cloud working on a private network or VM
+#  since the sub-10.69.x.x/14 are used internally):
+#
+#   @                 28800  A      199.21.178.42
+#   @                 28800  MX     10 mydomain.net.
+#   cdn               28800  CNAME  199.21.178.42
+#
+
+# Cloud number, between 1 and 15. Must be unique per cloud per node
+# (nodes can host several clouds at the same time in /etc/nef.cloud/)
+NEF_CLOUD_NUMBER=1
+
+# Name of nodes, must exist as a readable file in /etc/nef.service
+NEF_CLOUD_NODES=(n1 n2 n3)
+
+# SYSCONF profile name for this cloud: will be installed on each service system
+NEF_CLOUD_SYSCONF=nef.cloud.mycloud-3nodes-2service
+
+
+###############################################################################
+# About SERVICES
+
+# Name of services that the cloud has to managed
+NEF_CLOUD_NODE_SERVICES=(host mx cdn)
+
+# Read /etc/nef.service/mx to know about mx-specific options
+NEF_SERVICE_MX_DOMAIN=mydomain.net
+
+# Read /etc/nef.service/cdn to know about cdn-specific options
+NEF_SERVICE_CDN_DOMAIN=cdn.mydomain.net
+
+
+
+###############################################################################
+# Common to NODES, mainly for network connectivity
+
+# Used for creating a LVM logical volume for every service's LXC container
+NEF_CLOUD_NODE_LVM_GROUP=lvmvg
+
+# Used for network interface configuration (wrote into /etc/network/interfaces.d/)
+NEF_CLOUD_NODE_PUBLIC_INTERFACE=eth0
+
+# Here we define 1 IP to be controlled by this cloud
+# (with iptables forwards based on dst filters)
+#
+# --> this is typically a 'failover' IP
+#
+# We need as many IPs as we have TCP port sharing. For example, 2 services
+# running on the same port 80 need one IP for each, as to let iptables
+# know how to filter the incoming packets.
+#
+NEF_CLOUD_NODE_INTERFACES=(CDN1)
+NEF_CLOUD_NODE_INTERFACES_CDN1_INTERFACE=eth0:8
+NEF_CLOUD_NODE_INTERFACES_CDN1_IP=199.21.178.42
+
+
+NEF_CLOUD_NODE_TCP_FORWARDS=(CDNHTTP MXSMTP)
+
+# IP address and TCP port to filter
+NEF_CLOUD_NODE_TCP_FORWARDS_CDNHTTP_DEST_IP=199.21.178.42 # INTERFACES_CDN1
+NEF_CLOUD_NODE_TCP_FORWARDS_CDNHTTP_SOURCE_PORT=80
+
+# Target service name and TCP port to forward the IP packets to
+NEF_CLOUD_NODE_TCP_FORWARDS_CDNHTTP_TARGET_SERVICE=cdn
+NEF_CLOUD_NODE_TCP_FORWARDS_CDNHTTP_TARGET_PORT=80
+
+
+# IP address and TCP port to filter
+NEF_CLOUD_NODE_TCP_FORWARDS_MXSMTP_DEST_IP=199.21.178.42 # INTERFACES_CDN1
+NEF_CLOUD_NODE_TCP_FORWARDS_MXSMTP_SOURCE_PORT=25
+
+# Target service name and TCP port to forward the IP packets to
+NEF_CLOUD_NODE_TCP_FORWARDS_MXSMTP_TARGET_SERVICE=mx
+NEF_CLOUD_NODE_TCP_FORWARDS_MXSMTP_TARGET_PORT=25

@@ -1,0 +1,73 @@
+# NEF SERVICE 'cdn'               -*- shell-script -*-
+
+NEF_SERVICE_NUMBER=11
+NEF_SERVICE_FS_SIZE=15G
+NEF_SERVICE_SYSCONF=nef.service.cdn
+NEF_SERVICE_CDN_USER=geonef
+
+NEF_SERVICE_UPDATE()
+{
+    nef_service_common_update
+    nef_service_cdn_update_http
+    nef_service_cdn_update_updater
+}
+
+NEF_SERVICE_UPDATE_APPS()
+{
+    # nef_service_cdn_update
+    return
+}
+
+nef_service_cdn_update_http()
+{
+    nginxConf=/etc/nginx/sites-enabled/generated.`nef_info_service_hostname`.conf
+    nef_cloud_log "Regenerating nginx config: $nginxConf"
+    nef_template_apply_file $CLOUD_NEF_TEMPLATES_PATH/service.cdn.nginx.conf >$nginxConf
+    if service nginx status >/dev/null; then
+        service nginx reload && nef_cloud_log "Reloaded nginx"
+    else
+        service nginx start && nef_cloud_log "Started nginx"
+    fi
+}
+
+nef_service_cdn_update_updater()
+{
+    nef_cloud_log "checking CDN"
+
+    (
+
+        export NEF_SERVICE_CDN_PIDFILE=/var/run/$(nef_info_service_hostname)/cdn-update.pid
+        export NEF_SERVICE_CDN_LOGFILE=/var/log/$(nef_info_service_hostname)/cdn-update.log
+        export NEF_SERVICE_CDN_ROOT=/var/lib/$(nef_info_service_hostname)/cdn
+        export NEF_SERVICE_CDN_USER=geonef
+        export NEF_SERVICE_CDN_LISTEN_IP=$(nef_info_service_ip)
+        export NEF_SERVICE_CDN_LISTEN_PORT=11001
+        # export NEF_SERVICE_CDN_TAR_CMD=
+        DAEMON=/usr/bin/nef-service-cdn-server
+
+        nef_mkdir_p_geonef /var/run/$(nef_info_service_hostname)
+        nef_mkdir_p_geonef /var/log/$(nef_info_service_hostname)
+        nef_mkdir_p_geonef $NEF_SERVICE_CDN_ROOT
+
+	if start-stop-daemon --start --quiet \
+            --pidfile $NEF_SERVICE_CDN_PIDFILE \
+            --user $NEF_SERVICE_CDN_USER --chuid $NEF_SERVICE_CDN_USER \
+            --background --make-pidfile --startas $DAEMON --test >/dev/null; then
+
+            nef_cloud_log "CDN update server not running. Starting..."
+
+	    echo start-stop-daemon --start --quiet \
+                --pidfile $NEF_SERVICE_CDN_PIDFILE \
+                --user $NEF_SERVICE_CDN_USER --chuid $NEF_SERVICE_CDN_USER \
+                --background --make-pidfile --startas $DAEMON
+
+	    start-stop-daemon --start --quiet \
+                --pidfile $NEF_SERVICE_CDN_PIDFILE \
+                --user $NEF_SERVICE_CDN_USER --chuid $NEF_SERVICE_CDN_USER \
+                --background --make-pidfile --startas $DAEMON
+
+        else
+            nef_cloud_log "CDN update server running already"
+        fi
+    )
+}

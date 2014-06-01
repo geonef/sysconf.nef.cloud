@@ -1,0 +1,15 @@
+{
+    "app": {
+        "\$ref": "App",
+        "\$id": ObjectId("$appId")
+    },
+    "appName": "$appName",
+    "name": "${NEF_APP_VERSION_NAME}",
+    "codeNumber": $codeNumber,
+    "gitPath": "$NEF_CLOUD_APP_GIT_PATH",
+    "gitTag": "${NEF_APP_VERSION_TAG}",
+    "gitCommit": "$commitID",
+    "domains": "${NEF_APP_VERSION_DOMAINS}",
+    "tags": ["role/dev"],
+    "registeredAt": ISODate("$(date --iso-8601=ns)")
+}

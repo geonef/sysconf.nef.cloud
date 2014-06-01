@@ -1,0 +1,65 @@
+#!/bin/bash
+#
+# JFG 20140225 - Depends on lxc-debian
+#
+# Example:
+#   lxc-create -n test3 -t nef-sysconf -- geonef.template.single
+#
+
+configure_sysconf()
+{
+    path=$1
+    rootfs=$2
+    hostname=$3
+    shift
+    shift
+    shift
+
+    [ -d $rootfs/root/.ssh ] || mkdir $rootfs/root/.ssh
+    sshPubKeyPath=~/.ssh/id_dsa.pub
+    [ -r $sshPubKeyPath ] && {
+        authorizedPath=$rootfs/root/.ssh/authorized_keys
+        echo "Adding key '$sshPubKeyPath' to $authorizedPath"
+        cat $sshPubKeyPath >>$authorizedPath
+    }
+    cat <<EOF >>$rootfs/root/.ssh/config
+Host git.geonef.fr
+  Port 4286
+  User okapi
+EOF
+
+    sysconf_setup=_sysconf-setup.sh
+    sysconfRemoteBase=git.geonef.fr:/var/lib/git/sysadmin/sysconf
+
+    echo "Installing sysconf..."
+    mkdir -p $rootfs/sysconf/actual
+    for conf in "$@"; do
+        echo "    conf: $conf"
+        echo $conf >>$rootfs/sysconf/actual/deps
+        cd $rootfs/sysconf/
+        git clone $sysconfRemoteBase/$conf.git
+    done
+
+    echo $sysconfRemoteBase >$rootfs/sysconf/repository_root
+    SYSCONF_PATH=$rootfs/sysconf sysconf fetch
+
+    chroot $rootfs /sysconf/nef.common/tree/usr/bin/sysconf compile install
+
+    return $?
+}
+
+
+. /usr/share/lxc/templates/lxc-debian
+
+[ "$1" = "" ] && {
+    echo "sysconf name(s) required"
+    exit 1
+}
+
+configure_sysconf $path $rootfs $name "$@"
+if [ $? -ne 0 ]; then
+    echo "failed to configure sysconf"
+    exit 1
+fi
+
+exit 0

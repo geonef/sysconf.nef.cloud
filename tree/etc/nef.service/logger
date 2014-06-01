@@ -1,0 +1,17 @@
+# NEF SERVICE 'logger'               -*- shell-script -*-
+
+# http://fluentd.org/
+
+NEF_SERVICE_NUMBER=12
+NEF_SERVICE_SYSCONF=nef.service.logger
+
+NEF_SERVICE_UPDATE()
+{
+    echo "logger UPDATE ==================="
+    nef_service_common_update
+}
+
+NEF_SERVICE_UPDATE_APPS()
+{
+    echo "logger UPDATE APPS ==================="
+}

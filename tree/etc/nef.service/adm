@@ -1,0 +1,31 @@
+# NEF SERVICE 'adm'               -*- shell-script -*-
+
+NEF_SERVICE_NUMBER=13
+NEF_SERVICE_SYSCONF=nef.service.adm
+
+NEF_SERVICE_UPDATE()
+{
+    nef_service_common_update
+
+    this=$(nef_info_service_hostname)
+
+    # echo "adm UPDATE ==================="
+    mkdir -p /etc/nef.local/$this
+    [ -h /etc/nef.local/default ] || \
+        ln -s $this /etc/nef.local/default
+    phpMongodbSettings=/etc/nef.local/$this/service.mongodb.settings.php
+    #[ -f $phpMongodbSettings ] ||
+    cat <<EOF >$phpMongodbSettings
+<?php
+\$NEF_SERVICE_MONGODB_IP = '$(nef_info_service_ip mongodb)';
+\$NEF_SERVICE_MONGODB_HOSTNAME = '$(nef_info_service_hostname mongodb)';
+\$NEF_SERVICE_MONGODB_PORT = 27017;
+EOF
+
+    nef_cloud_log "generated: $phpMongodbSettings"
+}
+
+NEF_SERVICE_UPDATE_APPS()
+{
+    echo "adm UPDATE APPS ==================="
+}

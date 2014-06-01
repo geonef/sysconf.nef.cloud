@@ -1,0 +1,12 @@
+# NEF SERVICE 'lxc'               -*- shell-script -*-
+
+NEF_SERVICE_NUMBER=16
+NEF_SERVICE_FS_SIZE=50G
+NEF_SERVICE_SYSCONF=nef.service.lxc
+
+NEF_SERVICE_UPDATE()
+{
+    echo "lxc UPDATE ==================="
+    nef_service_common_update
+    #nef_service_lxc
+}
